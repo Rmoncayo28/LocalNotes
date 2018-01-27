@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">LocalNotes</string>
     <string name="title_activity_maps">Map</string>
+    <string name="stop_recording_button_string">Stop recording</string>
+    <string name="start_recording_button_string">Start recording</string>
+    <string name="take_a_picture">Take a picture</string>
 </resources>
