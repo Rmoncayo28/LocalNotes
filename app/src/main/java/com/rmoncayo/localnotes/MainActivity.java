@@ -4,8 +4,8 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.support.design.widget.FloatingActionButton;
 import android.support.v7.app.AppCompatActivity;
+import android.util.DisplayMetrics;
 import android.view.View;
-import android.widget.FrameLayout;
 
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapFragment;
@@ -19,10 +19,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        FrameLayout mapHolder = findViewById(R.id.main_map_holder);
         MapFragment mapFragment = (MapFragment) getFragmentManager()
                 .findFragmentById(R.id.main_map);
         mapFragment.getMapAsync(this);
+        DisplayMetrics displaymetrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(displaymetrics);
+        int height = displaymetrics.heightPixels;
+        mapFragment.getView().getLayoutParams().height = height/2;
         FloatingActionButton fab = findViewById(R.id.main_add_fab);
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -40,6 +43,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         }
     }
+
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
