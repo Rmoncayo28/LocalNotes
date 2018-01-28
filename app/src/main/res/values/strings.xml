@@ -4,4 +4,11 @@
     <string name="stop_recording_button_string">Stop recording</string>
     <string name="start_recording_button_string">Start recording</string>
     <string name="take_a_picture">Take a picture</string>
+    <string name="enter_note_name">Enter note name</string>
+    <string name="enter_the_name_for_this_note">Enter the name for this note</string>
+    <string name="enter_note_text">Enter note text</string>
+    <string name="address_for_pin_edit_text_string">Enter address for this pin</string>
+    <string name="appwidget_text">EXAMPLE</string>
+    <string name="add_widget">Add widget</string>
+    <string name="view_note_image_description">Image which was associated with this note</string>
 </resources>

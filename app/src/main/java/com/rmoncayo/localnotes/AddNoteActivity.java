@@ -13,6 +13,8 @@ import android.util.Log;
 import android.view.View;
 import android.widget.LinearLayout;
 
+import org.firezenk.audiowaves.Visualizer;
+
 import java.io.IOException;
 import java.text.DateFormat;
 import java.util.Date;
@@ -28,6 +30,7 @@ public class AddNoteActivity extends AppCompatActivity {
 
     private RecordButton mRecordButton = null;
     private MediaRecorder mRecorder = null;
+    private Visualizer mVisualizer = null;
 
     // Requesting permission to RECORD_AUDIO
     private boolean permissionToRecordAccepted = false;
@@ -41,23 +44,27 @@ public class AddNoteActivity extends AppCompatActivity {
                 permissionToRecordAccepted = grantResults[0] == PackageManager.PERMISSION_GRANTED;
                 break;
         }
-        if (!permissionToRecordAccepted) finish();
+        if (!permissionToRecordAccepted) {
+            finish();
+        } else {
+            setContentView(R.layout.activity_add_note);
+            LinearLayout recordButtonHolder = findViewById(R.id.record_audio_button_holder);
+            mRecordButton = new RecordButton(this);
+            recordButtonHolder.addView(mRecordButton);
+            mVisualizer = findViewById(R.id.audio_visualizer);
+        }
 
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_add_note);
+        ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION);
+
         mFileName = getExternalCacheDir().getAbsolutePath();
         DateFormat timeStampFormat = getDateTimeInstance();
         Date myDate = new Date();
-        mFileName += "/" + timeStampFormat.format(myDate)+".3gp";
-        ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION);
-        mRecordButton = new RecordButton(this);
-        LinearLayout recordButtonHolder = findViewById(R.id.record_audio_button_holder);
-        recordButtonHolder.addView(mRecordButton);
-
+        mFileName += "/" + timeStampFormat.format(myDate) + ".3gp";
 
 
     }
@@ -87,8 +94,14 @@ public class AddNoteActivity extends AppCompatActivity {
     private void onRecord(boolean start) {
         if (start) {
             startRecording();
+            if (mVisualizer != null) {
+                mVisualizer.startListening();
+            }
         } else {
             stopRecording();
+            if (mVisualizer != null) {
+                mVisualizer.stopListening();
+            }
         }
     }
 
@@ -107,7 +120,6 @@ public class AddNoteActivity extends AppCompatActivity {
         } catch (IOException e) {
             Log.e(LOG_TAG, "prepare() failed");
         }
-
         mRecorder.start();
     }
 
