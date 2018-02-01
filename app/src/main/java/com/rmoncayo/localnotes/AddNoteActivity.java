@@ -1,40 +1,106 @@
 package com.rmoncayo.localnotes;
 
 import android.Manifest;
+import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.MediaRecorder;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.FileProvider;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.AppCompatButton;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 
-import org.firezenk.audiowaves.Visualizer;
+import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.places.Place;
+import com.google.android.gms.location.places.ui.PlaceAutocompleteFragment;
+import com.google.android.gms.location.places.ui.PlaceSelectionListener;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.MapFragment;
+import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MarkerOptions;
+import com.rmoncayo.localnotes.data.NotesProvider;
 
+import java.io.File;
 import java.io.IOException;
-import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 
-import static java.text.DateFormat.getDateTimeInstance;
 
-
-public class AddNoteActivity extends AppCompatActivity {
+public class AddNoteActivity extends AppCompatActivity implements OnMapReadyCallback {
 
     private static final String LOG_TAG = "AudioRecordTest";
     private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
-    private static String mFileName = null;
+    private static String mAudioFileName = null;
 
-    private RecordButton mRecordButton = null;
     private MediaRecorder mRecorder = null;
-    private Visualizer mVisualizer = null;
+    //private Visualizer mVisualizer = null;
+
+    private String mImagePath = "";
+    private String mAudioPath = "";
+    private String mTitleString = "";
+    private String mBodyString = "";
+    private Double mLat = null;
+    private Double mLong = null;
+    private GoogleMap mGoogleMap = null;
+
+    static final int REQUEST_IMAGE_CAPTURE = 1;
+
 
     // Requesting permission to RECORD_AUDIO
     private boolean permissionToRecordAccepted = false;
     private String[] permissions = {Manifest.permission.RECORD_AUDIO};
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION);
+
+        mAudioFileName = getFilesDir().getAbsolutePath();
+//        DateFormat timeStampFormat = getDateTimeInstance();
+//        Date myDate = new Date();
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        mAudioFileName += "/" + timeStamp + ".3gp";
+
+        if (savedInstanceState != null) {
+            if (savedInstanceState.containsKey(NotesProvider.Note.KEY_AUDIO_PATH)) {
+                mAudioPath = savedInstanceState.getString(NotesProvider.Note.KEY_AUDIO_PATH);
+            }
+            if (savedInstanceState.containsKey(NotesProvider.Note.KEY_IMAGE_PATH)) {
+                mImagePath = savedInstanceState.getString(NotesProvider.Note.KEY_IMAGE_PATH);
+            }
+            if (savedInstanceState.containsKey(NotesProvider.Note.KEY_TITLE)) {
+                mTitleString = savedInstanceState.getString(NotesProvider.Note.KEY_TITLE);
+            }
+            if (savedInstanceState.containsKey(NotesProvider.Note.KEY_BODY)) {
+                mBodyString = savedInstanceState.getString(NotesProvider.Note.KEY_BODY);
+            }
+            if (savedInstanceState.containsKey(NotesProvider.Note.KEY_LAT)) {
+                mLat = savedInstanceState.getDouble(NotesProvider.Note.KEY_LAT);
+            }
+            if (savedInstanceState.containsKey(NotesProvider.Note.KEY_LONG)) {
+                mLong = savedInstanceState.getDouble(NotesProvider.Note.KEY_LONG);
+            }
+        }
+
+    }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
@@ -49,25 +115,174 @@ public class AddNoteActivity extends AppCompatActivity {
         } else {
             setContentView(R.layout.activity_add_note);
             LinearLayout recordButtonHolder = findViewById(R.id.record_audio_button_holder);
-            mRecordButton = new RecordButton(this);
+            RecordButton mRecordButton = new RecordButton(this);
             recordButtonHolder.addView(mRecordButton);
-            mVisualizer = findViewById(R.id.audio_visualizer);
+            Button pictureButton = findViewById(R.id.take_picture_button);
+            pictureButton.setOnClickListener(new Button.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    dispatchTakePictureIntent();
+                }
+            });
+            ((EditText) findViewById(R.id.note_name_edit_text))
+                    .getText()
+                    .append(mTitleString);
+            ((EditText) findViewById(R.id.note_body_edit_text))
+                    .getText()
+                    .append(mBodyString);
+
+            MapFragment mapFragment = (MapFragment) getFragmentManager()
+                    .findFragmentById(R.id.add_note_map);
+            mapFragment.getMapAsync(this);
+
+            PlaceAutocompleteFragment autocompleteFragment = (PlaceAutocompleteFragment)
+                    getFragmentManager().findFragmentById(R.id.place_autocomplete_fragment);
+            autocompleteFragment.setOnPlaceSelectedListener(new PlaceSelectionListener() {
+                @Override
+                public void onPlaceSelected(Place place) {
+                    // TODO: Get info about the selected place.
+                    LatLng latLng = place.getLatLng();
+                    mLat = latLng.latitude;
+                    mLong = latLng.longitude;
+                    if (mGoogleMap != null) {
+                        mGoogleMap.clear();
+                        mGoogleMap.addMarker(new MarkerOptions()
+                                .position(latLng))
+                                .setTitle(String.valueOf(place.getAddress()));
+                        mGoogleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 15));
+                    }
+                }
+
+                @Override
+                public void onError(Status status) {
+                    // TODO: Handle the error.
+                    Log.i(LOG_TAG, "An error occurred: " + status);
+                }
+            });
         }
 
     }
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION);
-
-        mFileName = getExternalCacheDir().getAbsolutePath();
-        DateFormat timeStampFormat = getDateTimeInstance();
-        Date myDate = new Date();
-        mFileName += "/" + timeStampFormat.format(myDate) + ".3gp";
-
-
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.add_note_menu, menu);
+        return true;
     }
+
+    public static final String ID_NOTE_KEY = "noteId";
+
+    //TODO probably deal with recording audio while rotating, stop recording ondestroy etc
+    private void onSaveButtonClicked(MenuItem item) {
+        EditText editText = findViewById(R.id.note_name_edit_text);
+        if (editText.getText().toString().trim().equalsIgnoreCase("")) {
+            editText.setError(getString(R.string.note_title_empty_error_string));
+        } else if (mLat == null || mLong == null) {
+            Toast.makeText(this, R.string.no_location_selected_string_add_note, Toast.LENGTH_LONG).show();
+        } else {
+            editText.setError(null);
+            EditText bodyEditText = findViewById(R.id.note_body_edit_text);
+            ContentValues contentValues = new ContentValues();
+            contentValues.put(NotesProvider.Note.KEY_TITLE, editText.getText().toString().trim());
+            contentValues.put(NotesProvider.Note.KEY_IMAGE_PATH, mImagePath);
+            contentValues.put(NotesProvider.Note.KEY_AUDIO_PATH, mAudioPath);
+            contentValues.put(NotesProvider.Note.KEY_BODY, bodyEditText.getText().toString().trim());
+            contentValues.put(NotesProvider.Note.KEY_LAT, mLat);
+            contentValues.put(NotesProvider.Note.KEY_LONG, mLong);
+            Uri insertedUri = getContentResolver().insert(NotesProvider.notesContentUri, contentValues);
+            Intent viewNoteIntent = new Intent(this, ViewNoteActivity.class);
+            viewNoteIntent.putExtra(ID_NOTE_KEY, ContentUris.parseId(insertedUri));
+            startActivity(viewNoteIntent);
+
+
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        EditText editText = findViewById(R.id.note_name_edit_text);
+        EditText bodyEditText = findViewById(R.id.note_body_edit_text);
+        outState.putString(NotesProvider.Note.KEY_TITLE, editText.getText().toString().trim());
+        outState.putString(NotesProvider.Note.KEY_IMAGE_PATH, mImagePath);
+        outState.putString(NotesProvider.Note.KEY_AUDIO_PATH, mAudioPath);
+        outState.putString(NotesProvider.Note.KEY_BODY, bodyEditText.getText().toString());
+        if (mLat != null) {
+            outState.putDouble(NotesProvider.Note.KEY_LAT, mLat);
+        }
+        if (mLong != null) {
+            outState.putDouble(NotesProvider.Note.KEY_LONG, mLong);
+        }
+    }
+
+    private void dispatchTakePictureIntent() {
+        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+            File photoFile = null;
+            try {
+                photoFile = createImageFile();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            if (photoFile != null) {
+                //TODO fix java.lang.IllegalArgumentException: Missing android.support.FILE_PROVIDER_PATHS meta-data V
+
+                Uri photoURI = FileProvider.getUriForFile(this,
+                        "com.rmoncayo.localnotes",
+                        photoFile);
+                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
+                startActivityForResult(takePictureIntent, REQUEST_IMAGE_CAPTURE);
+            }
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK) {
+            Toast.makeText(this, "Image saved", Toast.LENGTH_LONG).show();
+        } else {
+            mImagePath = "";
+        }
+    }
+
+    String mCurrentPhotoPath;
+
+    private File createImageFile() throws IOException {
+        // Create an image file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String imageFileName = "JPEG_" + timeStamp + "_";
+        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        File image = File.createTempFile(
+                imageFileName,  /* prefix */
+                ".jpg",         /* suffix */
+                storageDir      /* directory */
+        );
+
+        // Save a file: path for use with ACTION_VIEW intents
+        mImagePath = image.getAbsolutePath();
+        Log.d(LOG_TAG, mImagePath);
+        return image;
+    }
+
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.add_note_save_menu_button:
+                Log.d(LOG_TAG, "Save button menu");
+                onSaveButtonClicked(item);
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+        }
+    }
+
+    @Override
+    public void onMapReady(GoogleMap googleMap) {
+        mGoogleMap = googleMap;
+    }
+
 
     public class RecordButton extends AppCompatButton {
         boolean mStartRecording = true;
@@ -93,37 +308,44 @@ public class AddNoteActivity extends AppCompatActivity {
 
     private void onRecord(boolean start) {
         if (start) {
-            startRecording();
-            if (mVisualizer != null) {
-                mVisualizer.startListening();
+            try {
+                startRecording();
+            } catch (IOException e) {
+                e.printStackTrace();
             }
+            /*if (mVisualizer != null) {
+                mVisualizer.startListening();
+            }*/
         } else {
             stopRecording();
-            if (mVisualizer != null) {
+            /*if (mVisualizer != null) {
                 mVisualizer.stopListening();
-            }
+            }*/
         }
     }
 
     //TODO 1/27 think about handling recording and then losing focus/stopping
-    private void startRecording() {
+    private void startRecording() throws IOException {
         mRecorder = new MediaRecorder();
         mRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
         //TODO 1/27 maybe add ability to change audio recording quality in a settings menu
+        mRecorder.setOnInfoListener(new MediaRecorder.OnInfoListener() {
+            @Override
+            public void onInfo(MediaRecorder mr, int what, int extra) {
+                Log.d(LOG_TAG, "What = " + String.valueOf(what));
+            }
+        });
         mRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
-        Log.d(LOG_TAG, mFileName);
-        mRecorder.setOutputFile(mFileName);
         mRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
+        mRecorder.setOutputFile(mAudioFileName);
+        Log.d(LOG_TAG, mAudioFileName);
 
-        try {
-            mRecorder.prepare();
-        } catch (IOException e) {
-            Log.e(LOG_TAG, "prepare() failed");
-        }
+        mRecorder.prepare();
         mRecorder.start();
     }
 
     private void stopRecording() {
+        mAudioPath = mAudioFileName;
         mRecorder.stop();
         mRecorder.reset();
         mRecorder.release();

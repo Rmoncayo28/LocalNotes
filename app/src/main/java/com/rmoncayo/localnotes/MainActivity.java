@@ -34,6 +34,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 startActivity(intent);
             }
         });
+
     }
 
     class FABClickListener implements View.OnClickListener {
