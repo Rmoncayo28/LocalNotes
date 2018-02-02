@@ -18,6 +18,7 @@
 
         <Button
             android:id="@+id/view_note_play_button"
+            android:text="@string/view_note_audio_play_text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginEnd="8dp"

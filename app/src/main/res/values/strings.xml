@@ -15,4 +15,8 @@
     <string name="note_title_empty_error_string">Note title cannot be empty</string>
     <string name="thumbnail_description_add_note">Thumbnail for attached image</string>
     <string name="no_location_selected_string_add_note">Please select location</string>
+    <string name="delete_note_menu_title">Delete this note</string>
+    <string name="view_note_audio_play_text">Play</string>
+    <string name="view_note_audio_pause_text">Pause</string>
+    <string name="entering_geofence">Entering Geofence</string>
 </resources>

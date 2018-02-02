@@ -1,6 +1,7 @@
 package com.rmoncayo.localnotes;
 
 import android.Manifest;
+import android.app.PendingIntent;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
@@ -27,6 +28,10 @@ import android.widget.LinearLayout;
 import android.widget.Toast;
 
 import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.Geofence;
+import com.google.android.gms.location.GeofencingClient;
+import com.google.android.gms.location.GeofencingRequest;
+import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.places.Place;
 import com.google.android.gms.location.places.ui.PlaceAutocompleteFragment;
 import com.google.android.gms.location.places.ui.PlaceSelectionListener;
@@ -36,12 +41,15 @@ import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.rmoncayo.localnotes.data.NotesProvider;
 
 import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 
 public class AddNoteActivity extends AppCompatActivity implements OnMapReadyCallback {
@@ -60,8 +68,12 @@ public class AddNoteActivity extends AppCompatActivity implements OnMapReadyCall
     private Double mLat = null;
     private Double mLong = null;
     private GoogleMap mGoogleMap = null;
+    private PendingIntent geoFencePendingIntent;
+    private final int GEOFENCE_REQ_CODE = 0;
+
 
     static final int REQUEST_IMAGE_CAPTURE = 1;
+    public static final float GEOFENCE_RADIUS_IN_METERS = 50;
 
 
     // Requesting permission to RECORD_AUDIO
@@ -170,8 +182,6 @@ public class AddNoteActivity extends AppCompatActivity implements OnMapReadyCall
         return true;
     }
 
-    public static final String ID_NOTE_KEY = "noteId";
-
     //TODO probably deal with recording audio while rotating, stop recording ondestroy etc
     private void onSaveButtonClicked(MenuItem item) {
         EditText editText = findViewById(R.id.note_name_edit_text);
@@ -182,6 +192,15 @@ public class AddNoteActivity extends AppCompatActivity implements OnMapReadyCall
         } else {
             editText.setError(null);
             EditText bodyEditText = findViewById(R.id.note_body_edit_text);
+
+            GeofencingClient geofencingClient = LocationServices.getGeofencingClient(this);
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Required permissions not granted", Toast.LENGTH_LONG).show();
+                finish();
+                return;
+            }
+
+
             ContentValues contentValues = new ContentValues();
             contentValues.put(NotesProvider.Note.KEY_TITLE, editText.getText().toString().trim());
             contentValues.put(NotesProvider.Note.KEY_IMAGE_PATH, mImagePath);
@@ -191,11 +210,49 @@ public class AddNoteActivity extends AppCompatActivity implements OnMapReadyCall
             contentValues.put(NotesProvider.Note.KEY_LONG, mLong);
             Uri insertedUri = getContentResolver().insert(NotesProvider.notesContentUri, contentValues);
             Intent viewNoteIntent = new Intent(this, ViewNoteActivity.class);
-            viewNoteIntent.putExtra(ID_NOTE_KEY, ContentUris.parseId(insertedUri));
+            long rowId = ContentUris.parseId(insertedUri);
+            viewNoteIntent.putExtra(NotesProvider.Note.KEY_ID, rowId);
+
+            List<Geofence> geofenceList = new ArrayList<>();
+            geofenceList.add(new Geofence.Builder()
+                    .setRequestId(String.valueOf(rowId))
+                    .setCircularRegion(mLat, mLong, GEOFENCE_RADIUS_IN_METERS)
+                    .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                    .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER)
+                    .build());
+            GeofencingRequest geofencingRequest = getGeofencingRequest(geofenceList);
+            geofencingClient.addGeofences(geofencingRequest,
+                    createGeofencePendingIntent())
+                    .addOnSuccessListener(this,
+                            new OnSuccessListener<Void>() {
+                                @Override
+                                public void onSuccess(Void aVoid) {
+                                    Log.d("ADDNOTE", String.valueOf(mLat) + " " + String.valueOf(mLong) + "onSuccess");
+                                }
+                            });
+
             startActivity(viewNoteIntent);
 
 
         }
+    }
+
+    private GeofencingRequest getGeofencingRequest(List<Geofence> geofenceList) {
+        GeofencingRequest.Builder builder = new GeofencingRequest.Builder();
+        //initialTrigger is 0 so that this won't trigger when added to location the user is at
+        builder.setInitialTrigger(0);
+        builder.addGeofences(geofenceList);
+        return builder.build();
+    }
+
+    private PendingIntent createGeofencePendingIntent() {
+        Log.d(LOG_TAG, "createGeofencePendingIntent");
+        if (geoFencePendingIntent != null)
+            return geoFencePendingIntent;
+
+        Intent intent = new Intent(this, GeofenceTransitionsIntentService.class);
+        return PendingIntent.getService(this, GEOFENCE_REQ_CODE, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
     @Override
@@ -261,7 +318,6 @@ public class AddNoteActivity extends AppCompatActivity implements OnMapReadyCall
 
         // Save a file: path for use with ACTION_VIEW intents
         mImagePath = image.getAbsolutePath();
-        Log.d(LOG_TAG, mImagePath);
         return image;
     }
 
@@ -270,7 +326,6 @@ public class AddNoteActivity extends AppCompatActivity implements OnMapReadyCall
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.add_note_save_menu_button:
-                Log.d(LOG_TAG, "Save button menu");
                 onSaveButtonClicked(item);
                 return true;
             default:
@@ -329,16 +384,9 @@ public class AddNoteActivity extends AppCompatActivity implements OnMapReadyCall
         mRecorder = new MediaRecorder();
         mRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
         //TODO 1/27 maybe add ability to change audio recording quality in a settings menu
-        mRecorder.setOnInfoListener(new MediaRecorder.OnInfoListener() {
-            @Override
-            public void onInfo(MediaRecorder mr, int what, int extra) {
-                Log.d(LOG_TAG, "What = " + String.valueOf(what));
-            }
-        });
         mRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
         mRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
         mRecorder.setOutputFile(mAudioFileName);
-        Log.d(LOG_TAG, mAudioFileName);
 
         mRecorder.prepare();
         mRecorder.start();
